@@ -166,7 +166,6 @@ static uint32_t AlcVerbCommand(uint16_t nid, uint16_t verb,uint16_t param)
     return (uint32_t)output;
 }
 
-
 static uint32_t GetJackStatus(void)
 {
 
@@ -213,12 +212,16 @@ static uint32_t unplugged(void)
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD089);
                 break;
             case 0x10ec0256:
+                AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x1b); // set mic to internal
+                AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0x0c4b); // set mic to internal
                 AlcVerbCommand(0x12, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x20);
                 AlcVerbCommand(0x14, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x40);
                 AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x02);
                 AlcVerbCommand(0x21, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x00);
                 AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD089);
+//                AlcVerbCommand(0x57, AC_VERB_SET_COEF_INDEX, 0x03); // xtra
+//                AlcVerbCommand(0x57, AC_VERB_SET_PROC_COEF, 0x8aa6); // xtra
                 break;
             case 0x10ec0289:
                 AlcVerbCommand(0x12, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x20);
@@ -267,6 +270,8 @@ static uint32_t headphones(void)
                 AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
                 break;
             case 0x10ec0256:
+//                AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x1b); // set mic to internal
+//                AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0x0c4b); // set mic to internal
                 AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xC489);
                 AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
@@ -289,12 +294,34 @@ static uint32_t headphones(void)
     return 0; // Success
 }
 
+static uint32_t headsetCTIA(void)
+{
+    fprintf(stderr, "Jack Status: headset (CTIA/iPhone) plugged in.\n");
+    
+    switch (codecID)
+    {
+        case 0x10ec0256:
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x45); // set headset to CTIA
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0xd489); // set headset to CTIA
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x1b); // set mic to line-in
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0c6b); // set mic to line-in
+//            AlcVerbCommand(0x57, AC_VERB_SET_COEF_INDEX, 0x03); // Extra
+//            AlcVerbCommand(0x57, AC_VERB_SET_PROC_COEF, 0x8ea6); // Extra
+            break;
+        default:
+            break;
+    }
+    
+    return 0; // Success
+}
+
 //
 // Headset Auto-Detection
 //
 
 static uint32_t headset(void)
 {
+    
     if (!restorePreviousState) {
         fprintf(stderr, "Jack Status: headset plugged in.\n");
         previousState = 2;
@@ -317,6 +344,8 @@ static uint32_t headset(void)
                 AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
                 AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD689);
+//                AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x49); // Extra
+//                AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0x0149); // Extra
                 usleep(350000);
                 break;
             case 0x10ec0289:
@@ -335,6 +364,11 @@ static uint32_t headset(void)
                 break;
         }
     }
+    
+      headsetCTIA();
+    
+//    AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x06);
+//    AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0x6104);
         
     return 0; // Success
 }
@@ -345,34 +379,24 @@ static uint32_t headset(void)
 
 void JackBehavior(void)
 {
-    int counter = 4;
+    int nid, verb, param;
+    nid = 0x21;
+    verb = AC_VERB_GET_PIN_SENSE;
+    param = 0x00;
     
-    while (run) // Poll headphone jack state
+    while(run && (AlcVerbCommand(nid, verb, param) & 0x80000000) == 0x80000000) // Poll headphone jack state
     {
-        usleep(250000); // Polling frequency (seconds): use usleep for microseconds if finer-grained control is needed
-        
+        sleep(1); // Polling frequency (seconds): use usleep for microseconds if finer-grained control is needed
         if (awake)
         {
             awake = false;
             break;
         }
-        
-        if ((GetJackStatus() & 0x80000000) != 0x80000000)
-        {
-            if (--counter < 0)
-                break;
-        }
-        else
-            counter = 4;
     }
-    
     if (run) // If process is killed, maintain current state
     {
-        if (!isSleeping) {
-            fprintf(stderr, "JackBehavior Unplugged.\n");
-            unplugged(); // Clean up, jack's been unplugged or process was killed
-        }
-        
+        fprintf(stderr, "Unplugged.\n");
+        unplugged(); // Clean up, jack's been unplugged or process was killed
     }
 }
 
@@ -431,9 +455,11 @@ uint32_t CFPopUpMenu(void)
                 NULL, // CFURLRef soundURL (unused)
                 NULL, // CFURLRef localizationURL
                 GET_CFSTR_FROM_DICT(Merged, @"dialogTitle"), //CFStringRef alertHeader
-                GET_CFSTR_FROM_DICT(Merged, @"dialogMsg"), //CFStringRef alertMessage
-                GET_CFSTR_FROM_DICT(Merged, @"btnHeadphone"), //CFStringRef defaultButtonTitle
-                GET_CFSTR_FROM_DICT(Merged, @"btnMicin"), //CFStringRef alternateButtonTitle
+                //GET_CFSTR_FROM_DICT(Merged, @"dialogMsg"), //CFStringRef alertMessage
+                //GET_CFSTR_FROM_DICT(Merged, @"btnHeadphone"), //CFStringRef defaultButtonTitle
+                NULL,
+                GET_CFSTR_FROM_DICT(Merged, @"btnHeadphone"), //CFStringRef alternateButtonTitle
+                NULL,
                 //GET_CFSTR_FROM_DICT(Merged, @"btnCancel"), //CFStringRef alternateButtonTitle
                 GET_CFSTR_FROM_DICT(Merged, @"btnHeadset"), //CFStringRef otherButtonTitle
                 &responsecode // CFOptionFlags *responseFlags
@@ -518,8 +544,20 @@ void alcInit(void)
             AlcVerbCommand(0x21, AC_VERB_SET_UNSOLICITED_ENABLE, 0x83);
             break;
         case 0x10ec0256:
+//            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x10);
+//            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0120);
+//            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x0d);
+//            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0xa023);
+//            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x45);
+//            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x5289);
+//            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x46);
+//            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0004);
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x67);
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x3000);
             AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
             AlcVerbCommand(0x21, AC_VERB_SET_UNSOLICITED_ENABLE, 0x83);
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x1b); // set mic to internal
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0c4b); // set mic to internal
             break;
         case 0x10ec0289:
             AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);

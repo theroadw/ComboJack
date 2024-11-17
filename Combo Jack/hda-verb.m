@@ -231,6 +231,14 @@ static uint32_t unplugged(void)
                 AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD289);
                 break;
+            case 0x10ec0294:
+                AlcVerbCommand(0x12, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x20);
+                AlcVerbCommand(0x14, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x40);
+                AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x02);
+                AlcVerbCommand(0x21, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x00);
+                AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
+                AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD289);
+                break;
             case 0x10ec0295:
                 AlcVerbCommand(0x12, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x20);
                 AlcVerbCommand(0x14, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x40);
@@ -281,6 +289,11 @@ static uint32_t headphones(void)
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xC689);
                 AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
                 break;
+            case 0x10ec0294:
+                AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
+                AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xC689);
+                AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
+                break;
             case 0x10ec0295:
                 AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xC689);
@@ -301,6 +314,14 @@ static uint32_t headsetCTIA(void)
     switch (codecID)
     {
         case 0x10ec0256:
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x45); // set headset to CTIA
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0xd489); // set headset to CTIA
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x1b); // set mic to line-in
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0c6b); // set mic to line-in
+//            AlcVerbCommand(0x57, AC_VERB_SET_COEF_INDEX, 0x03); // Extra
+//            AlcVerbCommand(0x57, AC_VERB_SET_PROC_COEF, 0x8ea6); // Extra
+            break;
+        case 0x10ec0294:
             AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x45); // set headset to CTIA
             AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0xd489); // set headset to CTIA
             AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x1b); // set mic to line-in
@@ -354,6 +375,12 @@ static uint32_t headset(void)
                 AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD689);
                 usleep(350000);
                 break;
+            case 0x10ec0294:
+                AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
+                AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
+                AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF,          0xD689);
+                usleep(350000);
+                break;
             case 0x10ec0295:
                 AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
                 AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX,         0x45);
@@ -379,24 +406,34 @@ static uint32_t headset(void)
 
 void JackBehavior(void)
 {
-    int nid, verb, param;
-    nid = 0x21;
-    verb = AC_VERB_GET_PIN_SENSE;
-    param = 0x00;
+    int counter = 4;
     
-    while(run && (AlcVerbCommand(nid, verb, param) & 0x80000000) == 0x80000000) // Poll headphone jack state
+    while (run) // Poll headphone jack state
     {
-        sleep(1); // Polling frequency (seconds): use usleep for microseconds if finer-grained control is needed
+        usleep(250000); // Polling frequency (seconds): use usleep for microseconds if finer-grained control is needed
+        
         if (awake)
         {
             awake = false;
             break;
         }
+        
+        if ((GetJackStatus() & 0x80000000) != 0x80000000)
+        {
+            if (--counter < 0)
+                break;
+        }
+        else
+            counter = 4;
     }
+    
     if (run) // If process is killed, maintain current state
     {
-        fprintf(stderr, "Unplugged.\n");
-        unplugged(); // Clean up, jack's been unplugged or process was killed
+        if (!isSleeping) {
+            fprintf(stderr, "JackBehavior Unplugged.\n");
+            unplugged(); // Clean up, jack's been unplugged or process was killed
+        }
+        
     }
 }
 
@@ -560,6 +597,12 @@ void alcInit(void)
             AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0c4b); // set mic to internal
             break;
         case 0x10ec0289:
+            AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
+            AlcVerbCommand(0x21, AC_VERB_SET_UNSOLICITED_ENABLE, 0x83);
+            break;
+        case 0x10ec0294:
+            AlcVerbCommand(0x20, AC_VERB_SET_COEF_INDEX, 0x10);
+            AlcVerbCommand(0x20, AC_VERB_SET_PROC_COEF, 0x0120);
             AlcVerbCommand(0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x24);
             AlcVerbCommand(0x21, AC_VERB_SET_UNSOLICITED_ENABLE, 0x83);
             break;
